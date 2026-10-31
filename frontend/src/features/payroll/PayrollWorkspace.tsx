@@ -1,0 +1,45 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useState } from 'react'
+import axios from 'axios'
+import { ArrowLeft } from 'lucide-react'
+import { api } from '../../api/client'
+
+type Page<T> = { content: T[]; totalElements: number }
+type Employee = { id: number; employeeNumber: string; firstName: string; lastName: string }
+type Assignment = { id: number; employeeId: number; employeeNumber: string; employeeName: string; currency: string; monthlyGross: number; fixedDeduction: number; effectiveFrom: string }
+type Run = { id: number; period: string; currency: string; status: string; employeeCount: number; totalGross: number; totalDeductions: number; totalNet: number }
+type Item = { id: number; employeeId: number; employeeNumber: string; employeeName: string; period: string; currency: string; status: string; grossPay: number; fixedDeductions: number; netPay: number }
+const money = (amount: number, currency: string) => new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(amount)
+
+export function PayrollWorkspace({ roles, onBack }: { roles: string[]; onBack: () => void }) {
+  const canManage = roles.some((role) => ['SUPER_ADMIN', 'ADMIN', 'HR_MANAGER'].includes(role))
+  const canConfigure = roles.some((role) => ['SUPER_ADMIN', 'ADMIN', 'HR_MANAGER'].includes(role))
+  const qc = useQueryClient()
+  const now = new Date()
+  const period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  const [error, setError] = useState('')
+  const [selectedRun, setSelectedRun] = useState<number | null>(null)
+  const payslips = useQuery({ queryKey: ['payroll-me'], enabled: !canManage, queryFn: async () => (await api.get<Item[]>('/api/v1/payroll/me')).data })
+  const employees = useQuery({ queryKey: ['payroll-employees'], enabled: canConfigure, queryFn: async () => (await api.get<Page<Employee>>('/api/v1/employees', { params: { page: 0, size: 100, status: 'ACTIVE', sort: 'lastName,asc' } })).data.content })
+  const assignments = useQuery({ queryKey: ['payroll-assignments'], enabled: canManage, queryFn: async () => (await api.get<Page<Assignment>>('/api/v1/payroll/assignments', { params: { page: 0, size: 100 } })).data })
+  const runs = useQuery({ queryKey: ['payroll-runs'], enabled: canManage, queryFn: async () => (await api.get<Page<Run>>('/api/v1/payroll/runs', { params: { page: 0, size: 100 } })).data })
+  const items = useQuery({ queryKey: ['payroll-run-items', selectedRun], enabled: selectedRun != null, queryFn: async () => (await api.get<Page<Item>>(`/api/v1/payroll/runs/${selectedRun}/items`, { params: { page: 0, size: 100 } })).data })
+  const fail = (problem: unknown) => setError(axios.isAxiosError(problem) ? problem.response?.data?.detail ?? 'Could not complete payroll action.' : 'Could not complete payroll action.')
+  const refresh = async () => { setError(''); await Promise.all([qc.invalidateQueries({ queryKey: ['payroll-assignments'] }), qc.invalidateQueries({ queryKey: ['payroll-runs'] }), qc.invalidateQueries({ queryKey: ['payroll-me'] })]) }
+  const saveAssignment = useMutation({ mutationFn: async (body: { employeeId: number; currency: string; monthlyGross: number; fixedDeduction: number; effectiveFrom: string }) => api.put('/api/v1/payroll/assignments', body), onSuccess: refresh, onError: fail })
+  const runPayroll = useMutation({ mutationFn: async (month: string) => api.post('/api/v1/payroll/runs', null, { params: { period: month } }), onSuccess: refresh, onError: fail })
+  const approve = useMutation({ mutationFn: async (id: number) => api.post(`/api/v1/payroll/runs/${id}/approve`), onSuccess: refresh, onError: fail })
+
+  return <div className="content"><div className="directory-heading"><div><p className="eyebrow">COMPENSATION</p><h1>Payroll</h1><p className="subheading">Monthly salary snapshots and approved payslips.</p></div><button className="secondary-button" onClick={onBack}><ArrowLeft size={15} /> Overview</button></div>
+    {error && <p className="login-error" role="alert">{error}</p>}
+    {canManage ? <>
+      {canConfigure && <section className="directory-card"><div className="directory-table-heading"><div><h2>Salary assignments</h2><p>Fixed monthly gross and deduction, effective from a date.</p></div></div>
+        <form className="leave-admin-form" onSubmit={(event) => { event.preventDefault(); const f = new FormData(event.currentTarget); saveAssignment.mutate({ employeeId: Number(f.get('employeeId')), currency: String(f.get('currency')).toUpperCase(), monthlyGross: Number(f.get('monthlyGross')), fixedDeduction: Number(f.get('fixedDeduction')), effectiveFrom: String(f.get('effectiveFrom')) }) }}><label>Employee<select name="employeeId" required defaultValue=""><option value="" disabled>Select employee</option>{employees.data?.map((employee) => <option key={employee.id} value={employee.id}>{employee.firstName} {employee.lastName} · {employee.employeeNumber}</option>)}</select></label><div className="form-row"><label>Currency<input name="currency" defaultValue="INR" pattern="[A-Za-z]{3}" maxLength={3} required /></label><label>Effective from<input name="effectiveFrom" type="date" defaultValue={`${period}-01`} required /></label></div><div className="form-row"><label>Monthly gross<input name="monthlyGross" type="number" min="0.01" step="0.01" required /></label><label>Fixed deduction<input name="fixedDeduction" type="number" min="0" step="0.01" defaultValue="0" required /></label></div><button className="search-button" disabled={saveAssignment.isPending || !employees.data?.length}>{saveAssignment.isPending ? 'Saving…' : 'Save salary'}</button></form>
+        {assignments.data?.content.map((a) => <article className="onboarding-row" key={a.id}><div><h3>{a.employeeName} · {a.employeeNumber}</h3><p>{money(a.monthlyGross, a.currency)} gross · {money(a.fixedDeduction, a.currency)} fixed deduction · from {a.effectiveFrom}</p></div></article>)}
+      </section>}
+      {canConfigure && <section className="directory-card"><div className="directory-table-heading"><div><h2>Run monthly payroll</h2><p>Only approved runs appear in employee payslips.</p></div></div><form className="balance-lookup" onSubmit={(event) => { event.preventDefault(); runPayroll.mutate(String(new FormData(event.currentTarget).get('period'))) }}><label>Payroll month<input name="period" type="month" max={period} defaultValue={period} required /></label><button className="search-button" disabled={runPayroll.isPending}>{runPayroll.isPending ? 'Calculating…' : 'Create draft run'}</button></form></section>}
+      <section className="directory-card"><div className="directory-table-heading"><div><h2>Payroll runs</h2><p>{runs.data?.totalElements ?? 0} periods</p></div></div>{runs.data?.content.map((run) => <article className="opening-row" key={run.id}><div className="opening-main"><div className="opening-title-row"><h3>{run.period}</h3><span className={`status-badge ${run.status.toLowerCase()}`}>{run.status}</span></div><p>{run.employeeCount} employees · gross {money(run.totalGross,run.currency)} · deductions {money(run.totalDeductions,run.currency)} · net {money(run.totalNet,run.currency)}</p></div><div className="review-actions"><button className="secondary-button" onClick={() => setSelectedRun(run.id)}>Details</button>{canConfigure && run.status === 'DRAFT' && <button className="search-button" disabled={approve.isPending} onClick={() => approve.mutate(run.id)}>Approve</button>}</div></article>)}</section>
+      {selectedRun != null && <section className="directory-card"><div className="directory-table-heading"><div><h2>Run details</h2><p>{items.data?.totalElements ?? 0} employee payslips in this run</p></div><button className="secondary-button" onClick={() => setSelectedRun(null)}>Close</button></div>{items.data?.content.map((item) => <article className="opening-row" key={item.id}><div className="opening-main"><h3>{item.employeeName} · {item.employeeNumber}</h3><p>Gross {money(item.grossPay,item.currency)} · deductions {money(item.fixedDeductions,item.currency)} · net {money(item.netPay,item.currency)}</p></div></article>)}</section>}
+    </> : <section className="directory-card"><div className="directory-table-heading"><div><h2>My payslips</h2><p>{payslips.data?.length ?? 0} approved statements</p></div></div>{payslips.isLoading && <p className="directory-message">Loading payslips…</p>}{payslips.isError && <p className="directory-message error">Could not load payslips.</p>}{payslips.data?.length === 0 && <p className="directory-message">No approved payslips are available.</p>}{payslips.data?.map((item) => <article className="opening-row" key={item.id}><div className="opening-main"><div className="opening-title-row"><h3>{item.period}</h3><span className="status-badge approved">APPROVED</span></div><p>Gross {money(item.grossPay,item.currency)} · fixed deductions {money(item.fixedDeductions,item.currency)} · net pay <strong>{money(item.netPay,item.currency)}</strong></p></div></article>)}</section>}
+  </div>
+}

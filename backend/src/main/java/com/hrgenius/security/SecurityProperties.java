@@ -1,0 +1,14 @@
+package com.hrgenius.security;
+
+import org.springframework.boot.context.properties.ConfigurationProperties;
+
+@ConfigurationProperties(prefix = "app.security")
+public record SecurityProperties(
+        String jwtSecret,
+        long accessTokenMinutes,
+        long refreshTokenDays,
+        int failedLoginLimit,
+        long failedLoginLockMinutes,
+        boolean cookieSecure,
+        String allowedOrigin) {
+}

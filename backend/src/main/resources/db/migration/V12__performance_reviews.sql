@@ -1,0 +1,22 @@
+CREATE TABLE performance_reviews (
+    id BIGINT NOT NULL AUTO_INCREMENT,
+    cycle_name VARCHAR(120) NOT NULL,
+    employee_id BIGINT NOT NULL,
+    reviewer_id BIGINT NOT NULL,
+    status VARCHAR(24) NOT NULL DEFAULT 'SELF_REVIEW',
+    self_summary VARCHAR(3000),
+    self_rating INT,
+    manager_feedback VARCHAR(3000),
+    manager_rating INT,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    CONSTRAINT uk_performance_cycle_employee UNIQUE (cycle_name, employee_id),
+    CONSTRAINT fk_performance_employee FOREIGN KEY (employee_id) REFERENCES employees(id),
+    CONSTRAINT fk_performance_reviewer FOREIGN KEY (reviewer_id) REFERENCES employees(id),
+    CONSTRAINT ck_performance_status CHECK (status IN ('SELF_REVIEW','MANAGER_REVIEW','COMPLETED')),
+    CONSTRAINT ck_performance_self_rating CHECK (self_rating IS NULL OR self_rating BETWEEN 1 AND 5),
+    CONSTRAINT ck_performance_manager_rating CHECK (manager_rating IS NULL OR manager_rating BETWEEN 1 AND 5),
+    INDEX idx_performance_employee_status (employee_id, status),
+    INDEX idx_performance_reviewer_status (reviewer_id, status)
+);

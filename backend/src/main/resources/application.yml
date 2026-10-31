@@ -1,0 +1,65 @@
+server:
+  port: ${SERVER_PORT:8080}
+spring:
+  config:
+    import: optional:file:../.env[.properties]
+  application:
+    name: hrgenius
+  mail:
+    host: ${SMTP_HOST:}
+    port: ${SMTP_PORT:587}
+    username: ${SMTP_USERNAME:}
+    password: ${SMTP_PASSWORD:}
+    properties:
+      mail.smtp.auth: ${SMTP_AUTH:true}
+      mail.smtp.starttls.enable: ${SMTP_STARTTLS:true}
+  datasource:
+    url: ${DB_URL:jdbc:mysql://localhost:3306/hrgenius?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC}
+    username: ${DB_USERNAME:hrgenius}
+    password: ${DB_PASSWORD:}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate.jdbc.time_zone: UTC
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+management:
+  endpoints.web.exposure.include: health,info
+  endpoint.health.probes.enabled: true
+  health.mail.enabled: false
+  endpoints.web.cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGIN:http://localhost:5173}
+    allowed-methods: GET,OPTIONS
+springdoc:
+  swagger-ui.path: /swagger-ui.html
+  api-docs.path: /v3/api-docs
+app:
+  security:
+    jwt-secret: ${JWT_SECRET:}
+    access-token-minutes: ${JWT_ACCESS_TOKEN_MINUTES:15}
+    refresh-token-days: ${JWT_REFRESH_TOKEN_DAYS:14}
+    failed-login-limit: ${FAILED_LOGIN_LIMIT:5}
+    failed-login-lock-minutes: ${FAILED_LOGIN_LOCK_MINUTES:15}
+    cookie-secure: ${AUTH_COOKIE_SECURE:true}
+    allowed-origin: ${CORS_ALLOWED_ORIGIN:http://localhost:5173}
+  bootstrap-admin:
+    email: ${BOOTSTRAP_ADMIN_EMAIL:}
+    password: ${BOOTSTRAP_ADMIN_PASSWORD:}
+    first-name: ${BOOTSTRAP_ADMIN_FIRST_NAME:HR}
+    last-name: ${BOOTSTRAP_ADMIN_LAST_NAME:Administrator}
+  notifications:
+    email-enabled: ${EMAIL_NOTIFICATIONS_ENABLED:false}
+    from-address: ${EMAIL_FROM_ADDRESS:}
+  attendance:
+    time-zone: ${ATTENDANCE_TIME_ZONE:Asia/Kolkata}
+logging:
+  level:
+    root: INFO
+    com.hrgenius: INFO
+    org.springframework.web.servlet: INFO
+    org.springframework.jdbc: INFO
+    org.springframework.security: INFO
+    org.hibernate.SQL: WARN
